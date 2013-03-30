@@ -142,6 +142,13 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			mutex_unlock(&scan_mutex);
 			return 0;
 		}
+#ifdef CONFIG_LMK_APP_PROTECTION
+		if (strcmp(p->comm, "putmethod.latin") == 0) {
+			lowmem_print(2, "lmk: skipping kill of %s\n", p->comm);
+			task_unlock(p);
+			continue;
+		}
+#endif
 		oom_score_adj = p->signal->oom_score_adj;
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
