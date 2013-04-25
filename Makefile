@@ -378,7 +378,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-delete-null-pointer-checks \
 		   -mfpu=neon -mvectorize-with-neon-quad \
 		   -pipe \
-		   $(XX_A9) $(XX_GRAPHITE) $(XX_MODULO) $(XX_O3)
+		   $(XX_A9) $(XX_MODULO) $(XX_O3)
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
