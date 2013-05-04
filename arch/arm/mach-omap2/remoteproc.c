@@ -23,6 +23,7 @@
 #include <linux/memblock.h>
 #include <linux/remoteproc.h>
 
+#include <plat/common.h>
 #include <plat/omap_device.h>
 #include <plat/omap_hwmod.h>
 #include <plat/remoteproc.h>
@@ -64,11 +65,11 @@
  * DMA API in place.
  */
 
-#define OMAP5_RPROC_CMA_BASE_IPU	(0x95800000)
-#define OMAP5_RPROC_CMA_BASE_DSP	(0x95000000)
+#define OMAP5_RPROC_CMA_BASE_IPU	(0x82000000)
+#define OMAP5_RPROC_CMA_BASE_DSP	(0x82000000)
 
-#define OMAP4_RPROC_CMA_BASE_IPU	(0x99000000)
-#define OMAP4_RPROC_CMA_BASE_DSP	(0x98800000)
+#define OMAP4_RPROC_CMA_BASE_IPU	(0x82000000)
+#define OMAP4_RPROC_CMA_BASE_DSP	(0x82000000)
 
 
 #ifdef CONFIG_OMAP_REMOTEPROC_DSP
@@ -253,7 +254,10 @@ void __init omap_rproc_reserve_cma(int platform_type)
 		cma_size = CONFIG_OMAP4_IPU_CMA_SIZE;
 		cma_addr = OMAP4_RPROC_CMA_BASE_IPU;
 	} else if (platform_type == RPROC_CMA_OMAP5) {
-		cma_size = CONFIG_OMAP5_IPU_CMA_SIZE;
+		if (omap_total_ram_size() <= SZ_512M)
+			cma_size = CONFIG_OMAP5_IPU_CMA_SIZE_512MB;
+		else
+			cma_size = CONFIG_OMAP5_IPU_CMA_SIZE;
 		cma_addr = OMAP5_RPROC_CMA_BASE_IPU;
 	}
 
@@ -349,6 +353,19 @@ static int __init omap_rproc_init(void)
 			put_device(&pdev->dev);
 			ret = PTR_ERR(od);
 			continue;
+		}
+
+		/*Select the 512MB version of the firmware for 512MB memory
+		  * configuration for IPU
+		  */
+		if (strcmp(omap4_rproc_data[i].name,"ipu_c0") == 0) {
+			if ((omap_total_ram_size() <= SZ_512M )&& (omap_total_ram_size() > (SZ_1M * 384)))
+				omap4_rproc_data[i].firmware = "ducati-m3-core0_512MB.xem3";
+			else if ((omap_total_ram_size() <= (SZ_1M * 384)) && (omap_total_ram_size() > SZ_256M)) {
+				omap4_rproc_data[i].firmware = "ducati-m3-core0_384MB.xem3";
+			} else if (omap_total_ram_size() <= SZ_256M){
+				omap4_rproc_data[i].firmware = "ducati-m3-core0_256MB.xem3";
+			}
 		}
 
 		ret = platform_device_add_data(pdev,
