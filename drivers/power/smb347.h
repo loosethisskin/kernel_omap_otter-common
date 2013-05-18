@@ -60,143 +60,128 @@
 
 #include <linux/thermal_framework.h>
 
+#include <linux/power/summit_smb347.h>
+
 #define CONTROL_DEV_CONF                0x300
 #define PHY_PD                          0x1
-#define CONTROLLER_STAT1    0x03
-#define VBUS_DET	(1 << 2)
+#define CONTROLLER_STAT1		0x03
+#define VBUS_DET			(1 << 2)
 
 #define DRIVER_VERSION			"1.0"
 
 typedef struct
 {
-    int*    datas;
-    int     buffer_size;
-    int     start_index;
-    int     fill_count;
-}circular_buffer_t;
-struct summit_smb347_info {
-    struct i2c_client           *client;
-    struct device               *dev;
-    int                         current_state;
-    circular_buffer_t           events;
-    u8          		id;
-    u8          		flag_discharge;
-    u8                          usb_online;
-    u8                          ac_online;
-    u16                         protect_event;  	//Let the driver level to do the protection
-    u16                         protect_enable;		//Let the driver level to do the protection
-    int                         bat_thermal_step;
-    int                         fake_disconnect;
-    int                         mbid;
-    int                         irq;
-    int                         bad_battery;    	//Let the android service to do the recognize protection
-    int                         pin_en;
-    int                         pin_susp;
-    void __iomem                *usb_phy;
-    int							thermal_adjust_mode;
-    int                         max_aicl;
-    int                         pre_max_aicl;
+	int	*datas;
+	int	buffer_size;
+	int	start_index;
+	int	fill_count;
+} circular_buffer_t;
 
-    int                         charge_current;
-    int                         charge_current_redunction;
-    struct proc_dir_entry       *summit_proc_fs;
-    struct power_supply	        usb;
-    struct power_supply	        ac;
-    struct usb_phy		*xceiv;
-    //struct mutex                mutex;
-    //struct work_struct	        summit_monitor_work;
-    struct delayed_work         summit_monitor_work;
-    struct delayed_work         summit_check_work;
-    struct notifier_block	bat_notifier;
-    struct notifier_block       usb_notifier;
+struct summit_smb347_info {
+	struct i2c_client	*client;
+	struct device		*dev;
+	struct summit_smb347_platform_data	*pdata;
+	int			current_state;
+	circular_buffer_t	events;
+	u8			id;
+	u8			flag_discharge;
+	u8			usb_online;
+	u8			ac_online;
+	u16			protect_event;  	//Let the driver level to do the protection
+	u16			protect_enable;		//Let the driver level to do the protection
+	int			bat_thermal_step;
+	int			fake_disconnect;
+	int			irq;
+	int			bad_battery;    	//Let the android service to do the recognize protection
+	void __iomem		*usb_phy;
+	int			thermal_adjust_mode;
+
+	int			max_aicl;
+	int			pre_max_aicl;
+	int			charge_current;
+	int			charge_current_redunction;
+
+	struct proc_dir_entry	*summit_proc_fs;
+	struct power_supply	usb;
+	struct power_supply	ac;
+	struct usb_phy		*xceiv;
+	struct delayed_work	summit_monitor_work;
+	struct delayed_work	summit_check_work;
+	struct notifier_block	bat_notifier;
+	struct notifier_block	usb_notifier;
 	struct delayed_work	disconnect_work;
-    struct wake_lock chrg_lock;
-    struct wake_lock summit_lock;
-    struct thermal_dev tdev;
+	struct wake_lock	chrg_lock;
+	struct wake_lock	summit_lock;
+	struct thermal_dev	tdev;
 };
+
 enum usb_charger_states
 {
-    STATE_SUSPEND=0,
-    STATE_ONDEMAND,
-    STATE_INIT,
-    STATE_PC,
-    STATE_PC_100,
-    STATE_PC_500,
-    STATE_CD,        //CHARGING_DOWNSTREAM_PORT
-    STATE_DC,        //Dedicate Charger,
-    STATE_UC,        //Unknow Charger
-    STATE_OTHER,        //Unknow Charger
-    STATE_CHARGING,
-    STATE_CHARGE_ERROR,
+	STATE_SUSPEND=0,
+	STATE_ONDEMAND,
+	STATE_INIT,
+	STATE_PC,
+	STATE_PC_100,
+	STATE_PC_500,
+	STATE_CD,	// CHARGING_DOWNSTREAM_PORT
+	STATE_DC,	// Dedicate Charger,
+	STATE_UC,	// Unknown Charger
+	STATE_OTHER,	// Unknown Charger
+	STATE_CHARGING,
+	STATE_CHARGE_ERROR,
 	STATE_SHUTDOWN,
 };
 
-/*
-include/linux/usb/otg.h
-enum usb_xceiv_events {
-    USB_EVENT_NONE,         // no events or cable disconnected //
-    USB_EVENT_VBUS,         // vbus valid event //
-    USB_EVENT_LIMIT_0, 
-    USB_EVENT_LIMIT_100;
-    USB_EVENT_LIMIT_500;
-    USB_EVENT_UNKNOW_POWER,       // UNKNOW Power souce //
-    USB_EVENT_ID,           // id was grounded//
-    USB_EVENT_CHARGER,      // usb dedicated charger //
-    USB_EVENT_ENUMERATED,   // gadget driver enumerated //
-};
-
-*/
 enum usb_charger_events 
 {
-    EVENT_CHECKINIT=9,
-    EVENT_INTERRUPT_FROM_CHARGER,
-    EVENT_CHANGE_TO_ONDEMAND,
-    EVENT_CHANGE_TO_INTERNAL_FSM,
-    EVENT_DETECT_PC,
-    EVENT_DETECT_TBD,
-    EVENT_DETECT_OTHER,
-    EVENT_OVER_HOT_TEMP_HARD_LIMIT,
-    EVENT_BELOW_HOT_TEMP_HARD_LIMIT,
-    EVENT_OVER_HOT_TEMP_SOFT_LIMIT,
-    EVENT_BELOW_HOT_TEMP_SOFT_LIMIT,
-    EVENT_OVER_COLD_TEMP_HARD_LIMIT,
-    EVENT_BELOW_COLD_TEMP_HARD_LIMIT,
-    EVENT_OVER_COLD_TEMP_SOFT_LIMIT,
-    EVENT_BELOW_COLD_TEMP_SOFT_LIMIT,
-    EVENT_APSD_NOT_RUNNING,
-    EVENT_APSD_COMPLETE,
-    EVENT_APSD_NOT_COMPLETE,
-    EVENT_AICL_COMPLETE,
-    EVENT_APSD_AGAIN,
-    EVENT_OVER_LOW_BATTERY,
-    EVENT_BELOW_LOW_BATTERY,
-
-    EVENT_RECOGNIZE_BATTERY,
-    EVENT_NOT_RECOGNIZE_BATTERY,
-    EVENT_UNKNOW_BATTERY,
-    EVENT_WEAK_BATTERY,
-    EVENT_HEALTHY_BATTERY,    //voltage > 3.4V && capacity > 2%
-    EVENT_FULL_BATTERY,       //
-    EVENT_RECHARGE_BATTERY,       //
-    EVENT_BATTERY_I2C_ERROR,
-    EVENT_BATTERY_I2C_NORMAL,
-    EVENT_BATTERY_NTC_ZERO,
-    EVENT_BATTERY_NTC_NORMAL,
-    EVENT_TEMP_PROTECT_STEP_1,//       temp < -20
-    EVENT_TEMP_PROTECT_STEP_2,// -20 < temp < 0
-    EVENT_TEMP_PROTECT_STEP_3,//   0 < temp < 8
-    EVENT_TEMP_PROTECT_STEP_4,//  8  < temp < 14
-    EVENT_TEMP_PROTECT_STEP_5,//  14 < temp < 23
-    EVENT_TEMP_PROTECT_STEP_6,//  23 < temp < 45
-    EVENT_TEMP_PROTECT_STEP_7,//  45 < temp < 60
-    EVENT_TEMP_PROTECT_STEP_8,//  60 < temp
-    EVENT_RECHECK_PROTECTION,
+	EVENT_CHECKINIT=9,
+	EVENT_INTERRUPT_FROM_CHARGER,
+	EVENT_CHANGE_TO_ONDEMAND,
+	EVENT_CHANGE_TO_INTERNAL_FSM,
+	EVENT_DETECT_PC,
+	EVENT_DETECT_TBD,
+	EVENT_DETECT_OTHER,
+	EVENT_OVER_HOT_TEMP_HARD_LIMIT,
+	EVENT_BELOW_HOT_TEMP_HARD_LIMIT,
+	EVENT_OVER_HOT_TEMP_SOFT_LIMIT,
+	EVENT_BELOW_HOT_TEMP_SOFT_LIMIT,
+	EVENT_OVER_COLD_TEMP_HARD_LIMIT,
+	EVENT_BELOW_COLD_TEMP_HARD_LIMIT,
+	EVENT_OVER_COLD_TEMP_SOFT_LIMIT,
+	EVENT_BELOW_COLD_TEMP_SOFT_LIMIT,
+	EVENT_APSD_NOT_RUNNING,
+	EVENT_APSD_COMPLETE,
+	EVENT_APSD_NOT_COMPLETE,
+	EVENT_AICL_COMPLETE,
+	EVENT_APSD_AGAIN,
+	EVENT_OVER_LOW_BATTERY,
+	EVENT_BELOW_LOW_BATTERY,
+	EVENT_RECOGNIZE_BATTERY,
+	EVENT_NOT_RECOGNIZE_BATTERY,
+	EVENT_UNKNOW_BATTERY,
+	EVENT_WEAK_BATTERY,
+	EVENT_HEALTHY_BATTERY,    //voltage > 3.4V && capacity > 2%
+	EVENT_FULL_BATTERY,       //
+	EVENT_RECHARGE_BATTERY,       //
+	EVENT_BATTERY_I2C_ERROR,
+	EVENT_BATTERY_I2C_NORMAL,
+	EVENT_BATTERY_NTC_ZERO,
+	EVENT_BATTERY_NTC_NORMAL,
+	EVENT_TEMP_PROTECT_STEP_1,//       temp < -20
+	EVENT_TEMP_PROTECT_STEP_2,// -20 < temp < 0
+	EVENT_TEMP_PROTECT_STEP_3,//   0 < temp < 8
+	EVENT_TEMP_PROTECT_STEP_4,//  8  < temp < 14
+	EVENT_TEMP_PROTECT_STEP_5,//  14 < temp < 23
+	EVENT_TEMP_PROTECT_STEP_6,//  23 < temp < 45
+	EVENT_TEMP_PROTECT_STEP_7,//  45 < temp < 60
+	EVENT_TEMP_PROTECT_STEP_8,//  60 < temp
+	EVENT_RECHECK_PROTECTION,
 	EVENT_SHUTDOWN,
-    EVENT_CURRENT_THERMAL_ADJUST,
+	EVENT_CURRENT_THERMAL_ADJUST,
 };
 
 /* I2C chip addresses */
-#define SUMMIT_SMB347_I2C_ADDRESS	0x5F
+#define SUMMIT_SMB347_I2C_ADDRESS		0x5F
 #define SUMMIT_SMB347_I2C_ADDRESS_SECONDARY	0x06
 
 #define SET_BAT_FULL(X) SET_BIT(X,0)
@@ -775,19 +760,13 @@ void summit_fsm_stateTransform(struct summit_smb347_info *di,int event);
 void summit_fsm_doAction(struct summit_smb347_info *di,int event);
 const char *fsm_state_string(int state);
 const char *fsm_event_string(int event);
-void initCBuffer(circular_buffer_t* cbuffer,int size);
-void releaseCBuffer(circular_buffer_t* cbuffer);
-int readFromCBuffer(circular_buffer_t* cbuffer);
-void writeIntoCBuffer(circular_buffer_t* cbuffer,int data);
-int isCBufferNotEmpty(circular_buffer_t* cbuffer);
+
+/* circle buffer */
+void writeIntoCBuffer(circular_buffer_t *cbuffer , uint32_t data);
+int isCBufferNotEmpty(circular_buffer_t *cbuffer);
+uint32_t readFromCBuffer(circular_buffer_t *cbuffer);
 
 /*interface*/
-void create_summit_powersupplyfs(struct summit_smb347_info *di);
-void remove_summit_powersupplyfs(struct summit_smb347_info *di);
-void create_summit_procfs( struct summit_smb347_info *di);
-void remove_summit_procfs(void);
-int create_summit_sysfs( struct summit_smb347_info *di);
-int remove_summit_sysfs( struct summit_smb347_info *di);
 int summit_find_pre_cc(int cc);
 int summit_find_fast_cc(int cc);
 int summit_find_aicl(int aicl);
