@@ -1097,6 +1097,11 @@ static int bma250_probe(struct i2c_client *client, const struct i2c_device_id *i
 	struct bma250_data *data;
 	struct input_dev *dev;
 
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
+		dev_err(&client->dev, "SMBUS Byte Data not Supported\n");
+		return -EIO;
+	}
+
 	data = kzalloc(sizeof(struct bma250_data), GFP_KERNEL);
 	if (!data) {
 		dev_err(&client->dev, "failed to allocate memory for module data\n");
@@ -1191,7 +1196,7 @@ static int bma250_probe(struct i2c_client *client, const struct i2c_device_id *i
 
 	data->input = dev;
 
-	err = sysfs_create_group(&data->input->dev.kobj, &bma250_attribute_group);
+	err = sysfs_create_group(&client->dev.kobj, &bma250_attribute_group);
 	if (err < 0)
 		goto error_sysfs;
 
@@ -1282,27 +1287,26 @@ static const struct i2c_device_id bma250_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, bma250_id);
 
-static struct i2c_driver bma250_driver = {
+static struct i2c_driver bma250_i2c_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
 		.name	= BMA250_DRIVER,
 	},
-	.class		= I2C_CLASS_HWMON,
-	.id_table	= bma250_id,
 	.probe		= bma250_probe,
 	.remove		= __devexit_p(bma250_remove),
 	.detect		= bma250_detect,
 	.shutdown	= bma250_shutdown,
+	.id_table	= bma250_id,
 };
 
 static int __init BMA250_init(void)
 {
-	return i2c_add_driver(&bma250_driver);
+	return i2c_add_driver(&bma250_i2c_driver);
 }
 
 static void __exit BMA250_exit(void)
 {
-	i2c_del_driver(&bma250_driver);
+	i2c_del_driver(&bma250_i2c_driver);
 }
 
 module_init(BMA250_init);
