@@ -527,11 +527,14 @@ quit_search:
 	return ret;
 }
 
-void omap_wakeupgen_init_finish(void)
+/*
+ * Continue initialise the wakeupgen initialization after sar
+ * is initialized
+ */
+void __init omap_wakeupgen_init_finish(void)
 {
 	int i;
 	unsigned int max_spi_reg;
-
 	/*
 	 * Find out how many interrupts are supported.
 	 * OMAP4 supports max of 128 SPIs where as GIC can support
@@ -541,7 +544,16 @@ void omap_wakeupgen_init_finish(void)
 	 */
 	max_spi_reg = gic_readl(GIC_DIST_CTR, 0) & 0x1f;
 
-	/* Moved this code into it's own block called in omap-mpuss-lowpower to let sar init be setup first */
+	/*
+	 * Set CPU0 GIC backup flag permanently for omap4460 GP,
+	 * this is needed because of the ROM code bug that breaks
+	 * GIC during wakeup from device off. This errata fix also
+	 * clears the GIC save area during init to prevent restoring
+	 * garbage to the GIC.
+	 */
+	if (cpu_is_omap446x() && omap_type() == OMAP2_DEVICE_TYPE_GP)
+		pm44xx_errata |= PM_OMAP4_ROM_CPU1_BACKUP_ERRATUM_xxx;
+
 	if (cpu_is_omap44xx() && (omap_type() == OMAP2_DEVICE_TYPE_GP)) {
 		sar_base = omap4_get_sar_ram_base();
 
@@ -634,16 +646,6 @@ int __init omap_wakeupgen_init(void)
 	max_spi_reg = gic_readl(GIC_DIST_CTR, 0) & 0x1f;
 
 	spi_irq_banks = min(max_spi_reg, irq_banks);
-
-	/*
-	 * Set CPU0 GIC backup flag permanently for omap4460 GP,
-	 * this is needed because of the ROM code bug that breaks
-	 * GIC during wakeup from device off. This errata fix also
-	 * clears the GIC save area during init to prevent restoring
-	 * garbage to the GIC.
-	 */
-	if (cpu_is_omap446x() && omap_type() == OMAP2_DEVICE_TYPE_GP)
-		pm44xx_errata |= PM_OMAP4_ROM_CPU1_BACKUP_ERRATUM_xxx;
 
 	irq_hotplug_init();
 	irq_pm_init();
